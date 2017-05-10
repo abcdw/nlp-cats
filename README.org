@@ -1,0 +1,46 @@
+* nlp-cats
+Opennlp classificator in Clojure, which suggests categories for text snippet.
+
+** Goals of the project
+To create proof-of-concept tool, which allows to categorize issues based on
+their title and description. This tool can became a part of a big commercial
+product for reporting and processing problems of cities and buildings. It is
+important for UX, because it allows automatically to fill up fields that must be
+filed.
+
+** Dataset preparation
+As an initial dataset part of production database was taken. It looked like list
+of triplets (category, title, description). After that, list was separated into
+two parts: first part for buildings and second for cities problems. Separation
+was done by SQL queries using join and where operators. Number of different
+categories for buildings problems is smaller and only building problems will be
+used for training model. Table below demonstrates all possible categories for
+building's problems.
+
+| category_id | category_title | organization_type |
+|-------------+----------------+-------------------|
+|           1 | Temperature    | buildings         |
+|           2 | Cleaning       | buildings         |
+|           3 | Locksmith      | buildings         |
+|           4 | Electrical     | buildings         |
+|           5 | Plumbing       | buildings         |
+|           6 | Painting       | buildings         |
+
+After that dataset was separated into another two parts by language. There was
+only two languages in dataset: French and English and separation was done using
+Clojure language detection library \cite{clojurelangdetect}, which is just a
+wrapper over language detection library for Java \cite{nakatani2010langdetect}.
+For training model only French language was used in this example.
+
+Another important action is anonymization was done using regexp matching for
+things like badge id and part of speech tagging for finding and replacing real
+person names to anonymized names \cite{crf-pos-tagger}. And finally duplicates
+and test records was removed from dataset.
+
+After all manipulations was obtained around 50 anonymized records in French
+language, which was separated into training dataset and test dataset: ~train.csv~
+and ~test.csv~. 80% and 20% respectively.
+
+** Training
+** Evaluation
+#+BIBLIOGRAPHY: ./refs.bib plain
