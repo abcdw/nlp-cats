@@ -1,0 +1,175 @@
+% Created 2017-05-10 Wed 15:51
+% Intended LaTeX compiler: pdflatex
+\documentclass[14pt]{extarticle}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{grffile}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{textcomp}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+\author{Andrew Tropin}
+\date{\today}
+\title{}
+\hypersetup{
+ pdfauthor={Andrew Tropin},
+ pdftitle={},
+ pdfkeywords={},
+ pdfsubject={},
+ pdfcreator={Emacs 25.1.1 (Org mode 9.0.5)},
+ pdflang={English}}
+\begin{document}
+
+\tableofcontents
+
+\section{nlp-cats}
+\label{sec:org9837195}
+Opennlp classificator in Clojure, which suggests categories for text snippet.
+Source code is available on \href{https://github.com/abcdw/nlp-cats}{github}.
+
+\subsection{Goals of the project}
+\label{sec:org30ec016}
+To create proof-of-concept tool, which allows to categorize issues based on
+their title and description. This tool can became a part of a big commercial
+product for reporting and processing problems of cities and buildings. It is
+important for UX, because it allows automatically to fill up fields that must be
+filed.
+
+\subsection{Dataset preparation}
+\label{sec:org65634f2}
+As an initial dataset part of production database was taken. It looked like list
+of triplets (category, title, description). After that, list was separated into
+two parts: first part for buildings and second for cities problems. Separation
+was done by SQL queries using join and where operators. Number of different
+categories for buildings problems is smaller and only building problems will be
+used for training model. Table below demonstrates all possible categories for
+building's problems.
+
+\begin{center}
+\begin{tabular}{rll}
+category\(_{\text{id}}\) & category\(_{\text{title}}\) & organization\(_{\text{type}}\)\\
+\hline
+1 & Temperature & buildings\\
+2 & Cleaning & buildings\\
+3 & Locksmith & buildings\\
+4 & Electrical & buildings\\
+5 & Plumbing & buildings\\
+6 & Painting & buildings\\
+\end{tabular}
+\end{center}
+
+Actually Painting and Cleaning categories was removed from experiment as we do
+not have enough samples for them. After that dataset was separated into another
+two parts by language. There was only two languages in dataset: French and
+English and separation was done using Clojure language detection library
+\cite{clojurelangdetect}, which is just a wrapper over language detection
+library for Java \cite{nakatani2010langdetect}. For training model only French
+language was used in this example.
+
+Another important action is anonymization was done using regexp matching for
+things like badge id and part of speech tagging for finding and replacing real
+person names to anonymized names \cite{crfpostagger}. And finally duplicates
+and test records was removed from dataset.
+
+After all manipulations was obtained around 45 anonymized records in French
+language, which was separated into training dataset and test dataset:
+\texttt{train.csv} and \texttt{test.csv}, but later on it was decided to use other validation
+method, which will be explained in evaluation chapter.
+
+\subsection{Implementation}
+\label{sec:org1bbe374}
+Implementation based on Clojure wrapper around the apache opennlp library
+\cite{apacheopennlp} and consist of few functions. \texttt{remove-indexed} used for
+spliting dataset into training and test parts. \texttt{count-matches} and
+\texttt{count-semi-matches} is reducers, which helps calculate model score.
+
+\texttt{train-and-test-model} is most important part of implementation. At the first
+step it trains model from train-dataset, after it creates a \texttt{categorizer} -
+function, which allows to get probabilities of each category for particular text
+snippet. Model can be saved using \texttt{train/write-model} function for future use.
+At the second step function loops across test dataset and creates for each entry
+tuple of four elements: boolean value, which tells if suggested category equal
+to real category, real category, text snippet and probabilities of all categories.
+Example of such tuples provided below:
+
+\begin{verbatim}
+[false
+ "Locksmith"
+ "Monte Charge le bouton 1er étage du monte charge pour aller au local poubelle
+ ne fonctionne plus Merci."
+ (["Electrical" 0.2305854563819988]
+  ["Locksmith" 0.21372902079373204]
+  ["Plumbing" 0.17350935855753205]
+  ["Temperature" 0.15122224738999251])]
+[true
+ "Plumbing"
+ "Fuite d'eau au niveau du toit Fuite d'eau au niveau du toit suite à la pluie
+ de cet après-midi.."
+ (["Plumbing" 0.5268062661863027]
+  ["Temperature" 0.13269958836754342]
+  ["Locksmith" 0.10136806966414517]
+  ["Electrical" 0.06574031705840017])]
+\end{verbatim}
+
+\texttt{do-cross-validation} is a function, which separates dataset into two parts
+train-data and test-data and calculates score for model. For spliting it uses
+\texttt{nth} and \texttt{remove-indexed} functions to implement leave-one-out
+cross-validation. After splitting it writes two files and runs
+\texttt{train-and-test-model} function to produce pair of ints: number of correctly
+suggested categories and number of issues in test set. For leave-one-out
+cross-validation it is: \texttt{[0 1]} or \texttt{[1 1]}. To calculate score it uses function
+passed as \texttt{matcher} parameter.
+
+\subsection{Evaluation}
+\label{sec:org5af2b6e}
+First question is why leave-one-out cross-validation was used. Answer is simple:
+after preparation of the data number of issues decreased from 327 to 45. 45 is a
+very small size for dataset and common validation methods (70/30 for example)
+not acceptable for this case, because requires two much samples in test dataset
+and therefore train dataset became much smaller and quality of model decreases
+significantly. With such approach only one element excluded from training
+dataset and it allows to get better results.
+
+\begin{center}
+\begin{tabular}{lrrl}
+reduce function & matches & total & percentage\\
+\hline
+\texttt{count-matches} & 27 & 45 & 60\%\\
+\texttt{count-semi-matches} & 33 & 45 & 73.4\%\\
+\end{tabular}
+\end{center}
+
+There was two function used to calculate score for the model. First one
+calculates how much items have most possible category equal to real category and
+result is pretty weak, only \texttt{60\%}, but on the other hand training dataset of 44
+issues is really small, in this context it looks not so bad.
+
+Other idea was to calculate how many items falls into two most possible
+categories, on the example with probabilities in Implementation section one item
+does not fall into right category, but second possible category had a pretty
+close probability to first one. Experiment with \texttt{count-semi-matches} showed that
+\texttt{73.4\%} of the issues falls into two most possible categories. It is not so much
+as expected by intuition behind this idea, but to know this will not be
+superfluous.
+
+\subsection{Conclusion}
+\label{sec:orgbc9f117}
+This project implements classificator, which allows to suggest categories for
+issue reports. It written in Clojure and can be used in any production
+environment, which uses jvm, models can be easily saved in \texttt{.bin} files, but for
+now model shows pretty weak \texttt{60\%} accuracy and probably not suitable for real
+world usage. Such results can be explained with size of training dataset, 45
+issues is a really small number for such task. With bigger dataset and few
+tweaks for model features it is probably possible to get very sane results. When
+more data will be available, new experiment will be conducted and in case of
+good results this tool will be added to real project.
+
+\bibliographystyle{plain}
+\bibliography{./refs.bib}
+\end{document}
